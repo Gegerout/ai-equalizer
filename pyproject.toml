@@ -25,3 +25,49 @@ web = [
 
 [tool.uv]
 default-groups = ["dev", "web"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--cov=src --cov-report=term-missing"
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",     # ошибки стиля pycodestyle
+    "W",     # предупреждения стиля pycodestyle
+    "F",     # pyflakes, неиспользуемые импорты и переменные
+    "I",     # сортировка импортов isort
+    "UP",    # pyupgrade, современный синтаксис Python 3.11
+    "N",     # имена по PEP 8
+    "RUF",   # собственные правила ruff
+    "BLE",   # запрет except Exception без уважительной причины
+    "ANN",   # обязательные аннотации типов
+    "ASYNC", # блокирующие вызовы внутри async def
+    "B",     # типичные баги, изменяемые аргументы по умолчанию, raise без from
+]
+ignore = [
+    "RUF001", # ложные срабатывания на кириллицу в строках
+    "RUF002", # ложные срабатывания на кириллицу в docstring
+    "RUF003", # ложные срабатывания на кириллицу в комментариях
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN"]  # аннотации в тестах не несут контракта
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
