@@ -1,0 +1,91 @@
+name: CD
+
+# Push в main публикует образ main и sha, тег релиза публикует semver версии и latest
+# Pull request ничего не публикует, непроверенный код не должен попадать в реестр
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # Образ публикуется только после зелёных линтера и тестов
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Build and push image
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Право записи в реестр есть только у этого job
+    permissions:
+      contents: read
+      packages: write
+    # Публикации идут по очереди, иначе старый коммит может перезаписать тег main после нового
+    concurrency:
+      group: publish-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      # Тег релиза обязан совпадать с версией в pyproject.toml, иначе тег образа
+      # разойдётся с тем, что отвечает /api/v1/version
+      - name: Check release tag matches pyproject version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Тег $GITHUB_REF_NAME не совпадает с версией v$version из pyproject.toml"
+            exit 1
+          fi
+          echo "Тег $GITHUB_REF_NAME совпадает с версией из pyproject.toml"
+
+      # Встроенный токен workflow, отдельные секреты для GHCR не нужны
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Теги образа и OCI метки с версией, коммитом и ссылкой на репозиторий
+      # Метку latest action ставит сам и только для semver тегов, то есть только при релизе
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Кэш слоёв между прогонами, слой с зависимостями не пересобирается без изменения uv.lock
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Список опубликованных тегов в сводке запуска, его видно без чтения логов
+      - name: Published tags
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Опубликованные теги"
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

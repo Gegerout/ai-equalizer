@@ -1,10 +1,11 @@
 name: CI
 
 on:
+  # В main и в тегах релиза CI запускается внутри CD, поэтому здесь только остальные ветки
   push:
-    branches: [main]
+    branches-ignore: [main]
   pull_request:
-  # Тот же набор проверок вызовет CD перед публикацией образа
+  # Через этот вызов CD прогоняет те же проверки перед публикацией образа
   workflow_call:
 
 # Workflow только читает код, лишних прав у токена нет
@@ -30,6 +31,8 @@ jobs:
         with:
           version: "0.12.18"
           enable-cache: true
+          # Кэш сохраняет только job тестов, иначе два параллельных job спорят за один ключ
+          save-cache: false
 
       # Флаг locked роняет шаг, если uv.lock разошёлся с pyproject.toml
       - name: Install dependencies
