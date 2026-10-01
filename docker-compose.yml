@@ -1,0 +1,66 @@
+# Локальный стенд, приложение и Postgres в одной сети
+# Логин, пароль и имя базы берутся из .env, секретов в этом файле нет
+
+x-logging: &logging
+  # Ротация логов, иначе файл логов контейнера растёт без ограничений
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?задайте POSTGRES_USER в .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: ${POSTGRES_DB:?задайте POSTGRES_DB в .env}
+    ports:
+      # Только на localhost, чтобы запускать приложение без Docker, но не открывать БД в сеть
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging: *logging
+    restart: unless-stopped
+
+  app:
+    build: .
+    # Healthcheck приложения задан в Dockerfile и работает в любом окружении, не только в compose
+    env_file: .env
+    environment:
+      # Внутри сети compose БД доступна по имени сервиса и стандартному порту
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging: *logging
+    restart: unless-stopped
+
+networks:
+  backend:
+
+volumes:
+  pgdata:
