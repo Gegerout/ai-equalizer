@@ -24,8 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Та же версия uv, что локально и в Dockerfile
-      - uses: astral-sh/setup-uv@v10
+      # У setup-uv с восьмой версии нет коротких тегов вроде v10, только полные версии
+      # Сам uv той же версии, что локально и в Dockerfile
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.12.18"
           enable-cache: true
@@ -54,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.12.18"
           enable-cache: true
