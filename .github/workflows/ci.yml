@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Тот же набор проверок вызовет CD перед публикацией образа
+  workflow_call:
+
+# Workflow только читает код, лишних прав у токена нет
+permissions:
+  contents: read
+
+# В PR новый push отменяет устаревший прогон, а в main проверяется каждый коммит
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # Та же версия uv, что локально и в Dockerfile
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.18"
+          enable-cache: true
+
+      # Флаг locked роняет шаг, если uv.lock разошёлся с pyproject.toml
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # Ошибки ruff появятся аннотациями прямо на строках кода в коммите или PR
+      - name: Ruff lint
+        run: uv run ruff check --output-format=github .
+
+      - name: Ruff format check
+        run: uv run ruff format --check --diff .
+
+      # Локальные хуки можно обойти, а CI нет, ruff уже проверен шагами выше
+      - name: Other pre-commit hooks
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+        env:
+          SKIP: ruff-check,ruff-format
+
+  test:
+    name: Tests and coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.18"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # Порог покрытия 90 процентов задан в pyproject.toml, ниже него шаг падает
+      - name: Tests with coverage
+        run: uv run pytest
+
+      # Таблица покрытия в сводке запуска, порог здесь отключён, его уже проверил pytest
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: uv run coverage report --format=markdown --show-missing --fail-under=0 >> "$GITHUB_STEP_SUMMARY"
