@@ -1,6 +1,7 @@
 """Тесты трёх эндпоинтов через HTTP"""
 
 import json
+import logging
 import tomllib
 from pathlib import Path
 
@@ -35,6 +36,17 @@ async def test_version_comes_from_pyproject(client) -> None:
     assert response.status_code == 200
     assert response.json() == {"version": PYPROJECT_VERSION}
     assert app.version == PYPROJECT_VERSION
+
+
+async def test_healthz_requests_are_logged_at_debug_level(client, caplog) -> None:
+    """Запросы healthcheck пишутся на DEBUG, остальные на INFO"""
+    caplog.set_level(logging.DEBUG)
+
+    await client.get("/healthz")
+    await client.get("/api/v1/version")
+
+    levels = {r.path: r.levelname for r in caplog.records if r.msg == "request handled"}
+    assert levels == {"/healthz": "DEBUG", "/api/v1/version": "INFO"}
 
 
 async def test_health_returns_200_when_postgres_healthy(client, monkeypatch) -> None:

@@ -45,7 +45,10 @@ async def log_requests(
     start = time.perf_counter()
     try:
         response = await call_next(request)
-        log.info(
+        # Healthcheck Docker дёргает /healthz каждые 10 секунд, на INFO он забил бы полезные логи
+        level = logging.DEBUG if request.url.path == "/healthz" else logging.INFO
+        log.log(
+            level,
             "request handled",
             extra={
                 "method": request.method,
